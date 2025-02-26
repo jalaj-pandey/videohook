@@ -1,0 +1,285 @@
+import { useState, useEffect } from "react";
+import { Mic, MicOff, Menu, MessageSquare, SendHorizonal, Loader, Video, VideoOff } from "lucide-react"; // Added Video and VideoOff
+import { useTranslation } from "react-i18next";
+
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+// import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+
+import StatusMessage from "@/components/ui/status-message";
+// import PersonaPanel from "@/components/ui/persona-panel";
+import TranscriptPanel from "@/components/ui/transcript-panel";
+import EvaluationPanel from "./components/ui/evaluation-panel";
+import Settings from "@/components/ui/settings";
+
+import useRealTime from "@/hooks/useRealtime";
+import useAudioRecorder from "@/hooks/useAudioRecorder";
+import useAudioPlayer from "@/hooks/useAudioPlayer";
+import useVideoRecorder from "@/hooks/useVideoRecorder"; // Assuming a custom hook for video recording
+
+import { ThemeProvider, useTheme } from "./context/theme-context";
+import { DummyDataProvider, useDummyDataContext } from "@/context/dummy-data-context";
+import { AzureSpeechProvider } from "@/context/azure-speech-context";
+
+import dummyTranscriptsData from "@/data/dummyTranscripts.json";
+
+function App() {
+    const [isRecording, setIsRecording] = useState(false);
+    const [isVideoRecording, setIsVideoRecording] = useState(false); // Added state for video recording
+    const [isMobile, setIsMobile] = useState(false);
+    const { useDummyData } = useDummyDataContext();
+    const { theme } = useTheme();
+
+    const [transcripts, setTranscripts] = useState<Array<{ text: string; isUser: boolean; timestamp: Date }>>(() => []);
+    const [dummyTranscripts] = useState<Array<{ text: string; isUser: boolean; timestamp: Date }>>(() => {
+        return dummyTranscriptsData.map(transcript => ({
+            ...transcript,
+            timestamp: new Date(transcript.timestamp)
+        }));
+    });
+
+    const [evaluation, setEvaluation] = useState<{
+        classification: string | null;
+        overall_score: 0;
+        criteria: Array<any>;
+        rationale: string;
+        improvement_suggestion: string;
+    }>({
+        classification: null,
+        overall_score: 0,
+        criteria: [],
+        rationale: "",
+        improvement_suggestion: ""
+    });
+
+    const [isLoading, setIsLoading] = useState<boolean>(false);
+
+    const realtime = useRealTime({
+        enableInputAudioTranscription: true,
+        onWebSocketOpen: () => console.log("WebSocket connection opened"),
+        onWebSocketClose: () => console.log("WebSocket connection closed"),
+        onWebSocketError: event => console.error("WebSocket error:", event),
+        onReceivedError: message => console.error("error", message),
+        onReceivedResponseAudioDelta: message => {
+            isRecording && playAudio(message.delta);
+        },
+        onReceivedInputAudioBufferSpeechStarted: () => {
+            stopAudioPlayer();
+        },
+        onReceivedInputAudioTranscriptionCompleted: message => {
+            const newTranscriptItem = {
+                text: message.transcript,
+                isUser: true,
+                timestamp: new Date()
+            };
+            setTranscripts(prev => [...prev, newTranscriptItem]);
+        },
+        onReceivedResponseDone: message => {
+            const transcript = message.response.output.map(output => output.content?.map(content => content.transcript).join(" ")).join(" ");
+            if (!transcript) return;
+
+            const newTranscriptItem = {
+                text: transcript,
+                isUser: false,
+                timestamp: new Date()
+            };
+            setTranscripts(prev => [...prev, newTranscriptItem]);
+        }
+    });
+
+    const { reset: resetAudioPlayer, play: playAudio, stop: stopAudioPlayer } = useAudioPlayer();
+    const { start: startAudioRecording, stop: stopAudioRecording } = useAudioRecorder({
+        onAudioRecorded: realtime.addUserAudio
+    });
+
+    const { start: startVideoRecording, stop: stopVideoRecording } = useVideoRecorder({
+        onVideoRecorded: realtime.addUserVideo // Add logic for video recording to RealTime
+    });
+
+    const onToggleListening = async () => {
+        if (!isRecording) {
+            realtime.startSession();
+            await startAudioRecording();
+            resetAudioPlayer();
+            setIsRecording(true);
+        } else {
+            await stopAudioRecording();
+            stopAudioPlayer();
+            realtime.inputAudioBufferClear();
+            setIsRecording(false);
+        }
+    };
+
+    const onToggleVideoRecording = async () => {
+        if (!isVideoRecording) {
+            realtime.startSession(); // Optionally restart session for video recording
+            await startVideoRecording();
+            setIsVideoRecording(true);
+        } else {
+            await stopVideoRecording();
+            setIsVideoRecording(false);
+        }
+    };
+
+    const handleEvaluate = async () => {
+        setIsLoading(true);
+        const adaptedTranscript = transcripts.map(message => ({
+            speaker: message.isUser ? "Advisor" : "Client",
+            text: message.text.trim() // Remove any leading or trailing whitespace
+        }));
+        const payload = { transcript: adaptedTranscript };
+        const result = await fetch("/evaluation/transcript-evaluate", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+        });
+        const evalReceived = await result.json();
+        console.log(evalReceived);
+        setEvaluation(previous => ({
+            ...previous,
+            classification: evalReceived.rule_based_eval.evaluation.classification,
+            overall_score: evalReceived.rule_based_eval.evaluation.overall_score,
+            criteria: [...evalReceived.rule_based_eval.evaluation.criteria],
+            rationale: evalReceived.rule_based_eval.evaluation.rationale,
+            improvement_suggestion: evalReceived.rule_based_eval.evaluation.improvement_suggestion
+        }));
+        setIsLoading(false);
+    };
+
+    const { t } = useTranslation();
+
+    useEffect(() => {
+        const checkMobile = () => {
+            setIsMobile(window.innerWidth < 768);
+        };
+        checkMobile();
+        window.addEventListener("resize", checkMobile);
+        return () => window.removeEventListener("resize", checkMobile);
+    }, []);
+
+    return (
+        <div className={`min-h-screen bg-background p-4 text-foreground ${theme}`}>
+            <div className="mx-auto max-w-7xl">
+                <div className="relative mb-6 flex flex-col items-center md:mb-4">
+                    <h1 className="bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-center text-4xl font-bold text-transparent md:text-6xl">
+                        WISE
+                    </h1>
+                    <h2 className="margin-l purple m-4 text-2xl font-bold">
+                        AI simulation based solution for enablement in the Financial Services Industry on Azure
+                    </h2>
+                    <div className="absolute right-0 top-1/2 -translate-y-1/2 transform">
+                        <Settings isMobile={isMobile} />
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-4 md:gap-8">
+                    <Card className="p-6 md:overflow-auto">
+                        <h2 className="mb-4 text-center font-semibold">{t("app.controls")}</h2>
+                        <div className="space-y-8">
+                            <div className="mb-4 flex flex-col items-center justify-center gap-16">
+                                {/* Audio Recording Button */}
+                                <div>
+                                    <Button
+                                        onClick={onToggleListening}
+                                        className={`h-12 w-60 ${isRecording ? "bg-red-600 hover:bg-red-700" : "bg-purple-500 hover:bg-purple-600"}`}
+                                        aria-label={isRecording ? t("app.stopRecording") : t("app.startRecording")}
+                                    >
+                                        {isRecording ? (
+                                            <>
+                                                <MicOff className="mr-2 h-4 w-4" />
+                                                {t("app.stopConversation")}
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Mic className="mr-2 h-6 w-6" />
+                                                {t("app.startRecording")}
+                                            </>
+                                        )}
+                                    </Button>
+                                    <StatusMessage isRecording={isRecording} />
+                                </div>
+
+                                {/* Video Recording Button */}
+                                <div>
+                                    <Button
+                                        onClick={onToggleVideoRecording}
+                                        className={`h-12 w-60 ${isVideoRecording ? "bg-red-600 hover:bg-red-700" : "bg-purple-500 hover:bg-purple-600"}`}
+                                        aria-label={isVideoRecording ? t("app.stopVideoRecording") : t("app.startVideoRecording")}
+                                    >
+                                        {isVideoRecording ? (
+                                            <>
+                                                <VideoOff className="mr-2 h-4 w-4" />
+                                                {t("app.stopVideoRecording")}
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Video className="mr-2 h-6 w-6" />
+                                                {t("app.startVideoRecording")}
+                                            </>
+                                        )}
+                                    </Button>
+                                </div>
+
+                                {/* Send for Evaluation */}
+                                {!isRecording && !isLoading && transcripts.length > 0 && (
+                                    <div className="mb-4 flex flex-col items-center justify-center gap-4">
+                                        <Button
+                                            onClick={handleEvaluate}
+                                            className={`h-12 w-60 ${isRecording ? "bg-red-600 hover:bg-red-700" : "bg-purple-500 hover:bg-purple-600"}`}
+                                            aria-label={t("app.sendForEvaluation")}
+                                        >
+                                            <SendHorizonal className="mr-2 h-6 w-6" />
+                                        </Button>
+                                        <span>{t("app.sendForEvaluationText")}</span>
+                                    </div>
+                                )}
+
+                                {/* Loading State */}
+                                {isLoading && (
+                                    <div className="mb-4 flex flex-col items-center justify-center gap-4">
+                                        <Button
+                                            onClick={handleEvaluate}
+                                            className={`h-12 w-60 ${isRecording ? "bg-red-600 hover:bg-red-700" : "bg-purple-500 hover:bg-purple-600"}`}
+                                        >
+                                            <Loader className="animate-spin" />
+                                        </Button>
+                                        <span>{t("app.sendingForEvaluation")}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </Card>
+
+                    {/* Transcript Panel and Evaluation */}
+                    <Card className="hidden p-6 md:block">
+                        <h2 className="mb-4 text-center font-semibold">{t("app.transcriptHistory")}</h2>
+                        <div className="h-[calc(100vh-24rem)] overflow-auto pr-4">
+                            <TranscriptPanel transcripts={useDummyData ? dummyTranscripts : transcripts} />
+                        </div>
+                    </Card>
+
+                    <Card className="hidden p-6 md:block">
+                        <h2 className="mb-4 text-center font-semibold">{t("app.evaluation")}</h2>
+                        <div className="h-[calc(100vh-24rem)] overflow-auto pr-4">
+                            <EvaluationPanel evaluation={evaluation} />
+                        </div>
+                    </Card>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export default function RootApp() {
+    return (
+        <ThemeProvider>
+            <DummyDataProvider>
+                <AzureSpeechProvider>
+                    <App />
+                </AzureSpeechProvider>
+            </DummyDataProvider>
+        </ThemeProvider>
+    );
+}
