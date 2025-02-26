@@ -5,8 +5,8 @@
         "showTranscript": "Show transcript",
         "stopRecording": "Stop recording",
         "startRecording": "Start recording",
-        "stopVideoRecordig": "Stop recording",
-        "startVideoRecordig": "Start recording",
+        "stopVideoRecording": "Start recording",
+        "startVideoRecording": "Start recording",
         "stopConversation": "Stop conversation"
     },
     "status": {
