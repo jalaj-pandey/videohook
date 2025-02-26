@@ -172,7 +172,7 @@ function App() {
         return () => window.removeEventListener("resize", checkMobile);
     }, []);
 
-    // Request media stream for video preview only when needed (onStartRecording)
+
     useEffect(() => {
         if (isVideoRecording) {
             const getVideoStream = async () => {
@@ -180,7 +180,7 @@ function App() {
                     const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                     setVideoStream(stream); // Set the stream to the state
                     if (videoRef.current) {
-                        videoRef.current.srcObject = stream; // Attach the stream to the video element
+                        videoRef.current.srcObject = stream; 
                     }
                 } catch (error) {
                     console.error("Error accessing media devices.", error);
@@ -191,7 +191,7 @@ function App() {
             // Stop the video stream when not recording
             if (videoStream) {
                 videoStream.getTracks().forEach(track => track.stop());
-                setVideoStream(null); // Clean up the stream when not needed
+                setVideoStream(null); 
             }
         }
     }, [isVideoRecording]);
@@ -212,7 +212,7 @@ function App() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-4 md:gap-8">
-                    {/* Video preview */}
+
                     <Sheet>
                         <SheetTrigger asChild>
                             <Button variant="outline" className="mb-4 flex w-full items-center justify-center md:hidden">
@@ -237,12 +237,12 @@ function App() {
                         </div>
                     </Card>
 
-                    {/* Controls for Recording */}
+
                     <Card className="p-6 md:overflow-auto">
                         <h2 className="mb-4 text-center font-semibold">Controls</h2>
                         <div className="space-y-8">
                             <div className="mb-4 flex flex-col items-center justify-center gap-16">
-                                {/* Audio Recording Button */}
+
                                 <div>
                                     <Button
                                         onClick={onToggleListening}
