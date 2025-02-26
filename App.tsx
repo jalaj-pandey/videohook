@@ -1,37 +1,32 @@
-import { useState, useEffect } from "react";
-import { Mic, MicOff, Menu, SendHorizonal, Loader, Video, VideoOff } from "lucide-react"; // Added Video and VideoOff
+import { useState, useRef, useEffect } from "react";
+import { Mic, MicOff, Menu, SendHorizonal, Loader, Video, VideoOff } from "lucide-react";
 import { useTranslation } from "react-i18next";
-
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-
 import StatusMessage from "@/components/ui/status-message";
-// import PersonaPanel from "@/components/ui/persona-panel";
 import TranscriptPanel from "@/components/ui/transcript-panel";
 import EvaluationPanel from "./components/ui/evaluation-panel";
 import Settings from "@/components/ui/settings";
-
 import useRealTime from "@/hooks/useRealtime";
 import useAudioRecorder from "@/hooks/useAudioRecorder";
 import useAudioPlayer from "@/hooks/useAudioPlayer";
 import useVideoRecorder from "@/hooks/useVideoRecorder"; // Assuming a custom hook for video recording
-
 import { ThemeProvider, useTheme } from "./context/theme-context";
 import { DummyDataProvider, useDummyDataContext } from "@/context/dummy-data-context";
 import { AzureSpeechProvider } from "@/context/azure-speech-context";
-
 import dummyTranscriptsData from "@/data/dummyTranscripts.json";
 import PersonaPanel from "./components/ui/persona-panel";
+import { saveAs } from "file-saver";
 
 function App() {
     const [isRecording, setIsRecording] = useState(false);
-    const [isVideoRecording, setIsVideoRecording] = useState(false); // Added state for video recording
+    const [isVideoRecording, setIsVideoRecording] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
     const { useDummyData } = useDummyDataContext();
     const { theme } = useTheme();
 
-    const [transcripts, setTranscripts] = useState<Array<{ text: string; isUser: boolean; timestamp: Date }>>(() => []);
+    const [transcripts, setTranscripts] = useState<Array<{ text: string; isUser: boolean; timestamp: Date }>>([]);
     const [dummyTranscripts] = useState<Array<{ text: string; isUser: boolean; timestamp: Date }>>(() => {
         return dummyTranscriptsData.map(transcript => ({
             ...transcript,
@@ -54,6 +49,11 @@ function App() {
     });
 
     const [isLoading, setIsLoading] = useState<boolean>(false);
+
+    const videoRef = useRef<HTMLVideoElement | null>(null); // Reference to the video element for preview
+    const [videoStream, setVideoStream] = useState<MediaStream | null>(null); // Added state for video stream
+    const [videoBlob, setVideoBlob] = useState<Blob | null>(null); // State to hold the recorded video Blob
+    const [videoURLs, setVideoURLs] = useState<string[]>([]); // Store video URLs for playback
 
     const realtime = useRealTime({
         enableInputAudioTranscription: true,
@@ -94,7 +94,12 @@ function App() {
     });
 
     const { start: startVideoRecording, stop: stopVideoRecording } = useVideoRecorder({
-        onVideoRecorded: realtime.addUserVideo // Add logic for video recording to RealTime
+        onVideoRecorded: (blob) => {
+            // Save the video Blob after recording stops
+            setVideoBlob(blob);
+            const videoUrl = URL.createObjectURL(blob); // Create a URL for the recorded video
+            setVideoURLs(prev => [...prev, videoUrl]); // Add the new video URL to the list for playback
+        }
     });
 
     const onToggleListening = async () => {
@@ -113,12 +118,19 @@ function App() {
 
     const onToggleVideoRecording = async () => {
         if (!isVideoRecording) {
-            realtime.startSession(); // Optionally restart session for video recording
-            await startVideoRecording();
+            // Start video recording
             setIsVideoRecording(true);
+            await startVideoRecording(); // Start video recording here
         } else {
-            await stopVideoRecording();
+            // Stop video recording
             setIsVideoRecording(false);
+            await stopVideoRecording(); // Stop video recording here
+
+            // If there's an active stream, stop the video tracks
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                setVideoStream(null); // Clean up video stream state
+            }
         }
     };
 
@@ -160,6 +172,30 @@ function App() {
         return () => window.removeEventListener("resize", checkMobile);
     }, []);
 
+    // Request media stream for video preview only when needed (onStartRecording)
+    useEffect(() => {
+        if (isVideoRecording) {
+            const getVideoStream = async () => {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    setVideoStream(stream); // Set the stream to the state
+                    if (videoRef.current) {
+                        videoRef.current.srcObject = stream; // Attach the stream to the video element
+                    }
+                } catch (error) {
+                    console.error("Error accessing media devices.", error);
+                }
+            };
+            getVideoStream();
+        } else {
+            // Stop the video stream when not recording
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                setVideoStream(null); // Clean up the stream when not needed
+            }
+        }
+    }, [isVideoRecording]);
+
     return (
         <div className={`min-h-screen bg-background p-4 text-foreground ${theme}`}>
             <div className="mx-auto max-w-7xl">
@@ -176,7 +212,8 @@ function App() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-4 md:gap-8">
-                <Sheet>
+                    {/* Video preview */}
+                    <Sheet>
                         <SheetTrigger asChild>
                             <Button variant="outline" className="mb-4 flex w-full items-center justify-center md:hidden">
                                 <Menu className="mr-2 h-4 w-4" />
@@ -200,6 +237,7 @@ function App() {
                         </div>
                     </Card>
 
+                    {/* Controls for Recording */}
                     <Card className="p-6 md:overflow-auto">
                         <h2 className="mb-4 text-center font-semibold">Controls</h2>
                         <div className="space-y-8">
@@ -245,6 +283,28 @@ function App() {
                                             </>
                                         )}
                                     </Button>
+                                </div>
+                                {isVideoRecording && (
+                                    <div className="p-6">
+                                        <h2 className="mb-4 text-center font-semibold">Video Preview</h2>
+                                        <div className="flex justify-center">
+                                            <video ref={videoRef} width="300" height="200" autoPlay muted />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Recorded Videos */}
+                                <div className="p-6">
+                                    <h2 className="mb-4 text-center font-semibold">Recorded Videos</h2>
+                                    {videoURLs.length > 0 && (
+                                        <div className="space-y-4">
+                                            {videoURLs.map((url, index) => (
+                                                <div key={index} className="flex flex-col items-center">
+                                                    <video controls width="300" height="200" src={url} />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Send for Evaluation */}
