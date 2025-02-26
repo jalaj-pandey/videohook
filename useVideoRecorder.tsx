@@ -1,12 +1,15 @@
-// src/hooks/useVideoRecorder.ts
-
-import { useState } from "react";
+import React, { useState } from "react";
 
 // Custom hook for handling video recording
 export default function useVideoRecorder({ onVideoRecorded }: { onVideoRecorded: (videoBlob: Blob) => void }) {
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [videoStream, setVideoStream] = useState<MediaStream | null>(null);
+  
+  // Store the video URL for preview
+  const [videoURL, setVideoURL] = useState<string | null>(null);
+
+  const videoRef = React.useRef<HTMLVideoElement | null>(null); // Video reference for preview
 
   // Start recording video
   const start = async () => {
@@ -15,6 +18,11 @@ export default function useVideoRecorder({ onVideoRecorded }: { onVideoRecorded:
         // Request video and audio stream from the user's device
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         setVideoStream(stream);
+
+        // Set video stream to video element for live preview
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
 
         const recorder = new MediaRecorder(stream);
         setMediaRecorder(recorder);
@@ -33,6 +41,10 @@ export default function useVideoRecorder({ onVideoRecorded }: { onVideoRecorded:
         recorder.onstop = () => {
           const videoBlob = new Blob(videoChunks, { type: "video/webm" });
           onVideoRecorded(videoBlob); // Call the callback to handle the recorded video
+          
+          // Save the video URL for previewing
+          const videoURL = URL.createObjectURL(videoBlob);
+          setVideoURL(videoURL);
         };
 
         // Start recording
@@ -57,5 +69,5 @@ export default function useVideoRecorder({ onVideoRecorded }: { onVideoRecorded:
     }
   };
 
-  return { start, stop };
+  return { start, stop, videoRef, videoURL };
 }
