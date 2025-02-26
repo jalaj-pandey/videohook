@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
-import { Mic, MicOff, Menu, MessageSquare, SendHorizonal, Loader, Video, VideoOff } from "lucide-react"; // Added Video and VideoOff
+import { Mic, MicOff, Menu, SendHorizonal, Loader, Video, VideoOff } from "lucide-react"; // Added Video and VideoOff
 import { useTranslation } from "react-i18next";
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-// import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 import StatusMessage from "@/components/ui/status-message";
 // import PersonaPanel from "@/components/ui/persona-panel";
@@ -22,6 +22,7 @@ import { DummyDataProvider, useDummyDataContext } from "@/context/dummy-data-con
 import { AzureSpeechProvider } from "@/context/azure-speech-context";
 
 import dummyTranscriptsData from "@/data/dummyTranscripts.json";
+import PersonaPanel from "./components/ui/persona-panel";
 
 function App() {
     const [isRecording, setIsRecording] = useState(false);
@@ -175,8 +176,32 @@ function App() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-4 md:gap-8">
+                <Sheet>
+                        <SheetTrigger asChild>
+                            <Button variant="outline" className="mb-4 flex w-full items-center justify-center md:hidden">
+                                <Menu className="mr-2 h-4 w-4" />
+                                View Persona
+                            </Button>
+                        </SheetTrigger>
+                        <SheetContent side="left" className="w-[300px] sm:w-[400px]">
+                            <SheetHeader>
+                                <SheetTitle>Current Persona</SheetTitle>
+                            </SheetHeader>
+                            <div className="h-[calc(100vh-4rem)] overflow-auto pr-4">
+                                <PersonaPanel />
+                            </div>
+                        </SheetContent>
+                    </Sheet>
+
+                    <Card className="hidden p-6 md:block">
+                        <h2 className="mb-4 text-center font-semibold">Current Persona</h2>
+                        <div className="h-[calc(100vh-24rem)] overflow-auto pr-4">
+                            <PersonaPanel />
+                        </div>
+                    </Card>
+
                     <Card className="p-6 md:overflow-auto">
-                        <h2 className="mb-4 text-center font-semibold">{t("app.controls")}</h2>
+                        <h2 className="mb-4 text-center font-semibold">Controls</h2>
                         <div className="space-y-8">
                             <div className="mb-4 flex flex-col items-center justify-center gap-16">
                                 {/* Audio Recording Button */}
@@ -242,10 +267,11 @@ function App() {
                                         <Button
                                             onClick={handleEvaluate}
                                             className={`h-12 w-60 ${isRecording ? "bg-red-600 hover:bg-red-700" : "bg-purple-500 hover:bg-purple-600"}`}
+                                            aria-label={isRecording ? t("app.stopRecording") : t("app.startRecording")}
                                         >
                                             <Loader className="animate-spin" />
                                         </Button>
-                                        <span>{t("app.sendingForEvaluation")}</span>
+                                        <span>Sending For Evaluation..</span>
                                     </div>
                                 )}
                             </div>
@@ -254,14 +280,14 @@ function App() {
 
                     {/* Transcript Panel and Evaluation */}
                     <Card className="hidden p-6 md:block">
-                        <h2 className="mb-4 text-center font-semibold">{t("app.transcriptHistory")}</h2>
+                        <h2 className="mb-4 text-center font-semibold">Transcript History</h2>
                         <div className="h-[calc(100vh-24rem)] overflow-auto pr-4">
                             <TranscriptPanel transcripts={useDummyData ? dummyTranscripts : transcripts} />
                         </div>
                     </Card>
 
                     <Card className="hidden p-6 md:block">
-                        <h2 className="mb-4 text-center font-semibold">{t("app.evaluation")}</h2>
+                        <h2 className="mb-4 text-center font-semibold">Evaluation</h2>
                         <div className="h-[calc(100vh-24rem)] overflow-auto pr-4">
                             <EvaluationPanel evaluation={evaluation} />
                         </div>
