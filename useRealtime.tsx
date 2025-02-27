@@ -110,6 +110,7 @@ export default function useRealTime({
             type: "input_video_buffer.append",
             video: videoBlob
         };
+        console.log("Add user fired",command)
 
         sendJsonMessage(command);
     };
