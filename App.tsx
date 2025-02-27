@@ -17,7 +17,7 @@ import { DummyDataProvider, useDummyDataContext } from "@/context/dummy-data-con
 import { AzureSpeechProvider } from "@/context/azure-speech-context";
 import dummyTranscriptsData from "@/data/dummyTranscripts.json";
 import PersonaPanel from "./components/ui/persona-panel";
-import { saveAs } from "file-saver";
+// import { saveAs } from "file-saver";
 
 function App() {
     const [isRecording, setIsRecording] = useState(false);
@@ -94,12 +94,13 @@ function App() {
     });
 
     const { start: startVideoRecording, stop: stopVideoRecording } = useVideoRecorder({
-        onVideoRecorded: (blob) => {
-            // Save the video Blob after recording stops
-            setVideoBlob(blob);
-            const videoUrl = URL.createObjectURL(blob); // Create a URL for the recorded video
-            setVideoURLs(prev => [...prev, videoUrl]); // Add the new video URL to the list for playback
-        }
+        // onVideoRecorded: (blob) => {
+        //     // Save the video Blob after recording stops
+        //     setVideoBlob(blob);
+        //     const videoUrl = URL.createObjectURL(blob); // Create a URL for the recorded video
+        //     setVideoURLs(prev => [...prev, videoUrl]); // Add the new video URL to the list for playback
+        // }
+        onVideoRecorded: realtime.addUserVideo
     });
 
     const onToggleListening = async () => {
