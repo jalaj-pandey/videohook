@@ -1,73 +1,50 @@
-import React, { useState } from "react";
+import { useRef } from "react";
 
-// Custom hook for handling video recording
-export default function useVideoRecorder({ onVideoRecorded }: { onVideoRecorded: (videoBlob: Blob) => void }) {
-  const [isRecording, setIsRecording] = useState(false);
-  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
-  const [videoStream, setVideoStream] = useState<MediaStream | null>(null);
-  
-  // Store the video URL for preview
-  const [videoURL, setVideoURL] = useState<string | null>(null);
+type Parameters = {
+    onVideoRecorded: (videoBlob: Blob) => void; // Callback for video blobs
+};
 
-  const videoRef = React.useRef<HTMLVideoElement | null>(null); // Video reference for preview
+export default function useVideoRecorder({ onVideoRecorded }: Parameters) {
+    const mediaStreamRef = useRef<MediaStream | null>(null);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 
-  // Start recording video
-  const start = async () => {
-    if (navigator.mediaDevices && !isRecording) {
-      try {
-        // Request video and audio stream from the user's device
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        setVideoStream(stream);
+    const start = async () => {
+        // Start video recording
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        mediaStreamRef.current = stream;
 
-        // Set video stream to video element for live preview
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
+        // Set up the MediaRecorder for the video stream
+        const mediaRecorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = mediaRecorder;
 
-        const recorder = new MediaRecorder(stream);
-        setMediaRecorder(recorder);
-
-        // Array to store video chunks
-        const videoChunks: BlobPart[] = [];
-
-        // Collect video data when recording
-        recorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            videoChunks.push(event.data);
-          }
+        const chunks: Blob[] = [];
+        
+        // Collect video chunks as the video is recorded
+        mediaRecorder.ondataavailable = (event) => {
+            chunks.push(event.data);
         };
 
-        // When recording stops, process the video data
-        recorder.onstop = () => {
-          const videoBlob = new Blob(videoChunks, { type: "video/webm" });
-          onVideoRecorded(videoBlob); // Call the callback to handle the recorded video
-          
-          // Save the video URL for previewing
-          const videoURL = URL.createObjectURL(videoBlob);
-          setVideoURL(videoURL);
+        // Once recording stops, create a Blob and send it to the callback
+        mediaRecorder.onstop = () => {
+            const videoBlob = new Blob(chunks, { type: "video/webm" });
+            onVideoRecorded(videoBlob); // Call the callback with the video Blob
         };
 
         // Start recording
-        recorder.start();
-        setIsRecording(true);
-      } catch (err) {
-        console.error("Error starting video recording", err);
-      }
-    }
-  };
+        mediaRecorder.start();
+    };
 
-  // Stop recording video
-  const stop = () => {
-    if (mediaRecorder && isRecording) {
-      mediaRecorder.stop();
-      setIsRecording(false);
+    const stop = async () => {
+        // Stop the video recording
+        if (mediaRecorderRef.current) {
+            mediaRecorderRef.current.stop();
+        }
 
-      // Stop the video stream
-      if (videoStream) {
-        videoStream.getTracks().forEach((track) => track.stop());
-      }
-    }
-  };
+        // Stop the video stream
+        if (mediaStreamRef.current) {
+            mediaStreamRef.current.getTracks().forEach(track => track.stop());
+        }
+    };
 
-  return { start, stop, videoRef, videoURL };
+    return { start, stop };
 }
