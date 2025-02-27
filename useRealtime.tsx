@@ -106,14 +106,27 @@ export default function useRealTime({
 
     // **Add user video**
     const addUserVideo = (videoBlob: Blob) => {
-        const command: InputVideoBufferAppendCommand = {
-            type: "input_video_buffer.append",
-            video: videoBlob
+        const reader = new FileReader();
+        
+        reader.onloadend = () => {
+            const base64Video = reader.result?.toString().split(",")[1]; // Extract base64 data
+    
+            if (base64Video) {
+                const command: InputVideoBufferAppendCommand = {
+                    type: "input_video_buffer.append",
+                    video: base64Video // Send base64 string instead of Blob
+                };
+    
+                console.log("Add user fired", command);
+                sendJsonMessage(command);
+            } else {
+                console.error("Failed to convert video to base64");
+            }
         };
-        console.log("Add user fired",command)
-
-        sendJsonMessage(command);
+    
+        reader.readAsDataURL(videoBlob); // Convert to base64
     };
+    
 
     // Handle WebSocket messages
     const onMessageReceived = (event: MessageEvent<any>) => {
